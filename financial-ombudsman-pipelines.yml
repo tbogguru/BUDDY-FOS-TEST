@@ -1,0 +1,374 @@
+- pipeline: "FOS Staging"
+  on: "CLICK"
+  refs:
+  - "refs/heads/release/10.2"
+  priority: "NORMAL"
+  target_site_url: "https://staging.financial-ombudsman.org.uk/"
+  fail_on_prepare_env_warning: true
+  trigger_conditions:
+  - trigger_condition: "ALWAYS"
+  actions:
+  - action: "Execute: npm install + gulp"
+    type: "BUILD"
+    working_directory: "/buddy/itiviti"
+    docker_image_name: "library/node"
+    docker_image_tag: "10"
+    execute_commands:
+    - "npm install"
+    - "gulp build"
+    setup_commands:
+    - "npm install -g gulp grunt-cli"
+    volume_mappings:
+    - "/:/buddy/itiviti"
+    shell: "BASH"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+  - action: "Composer 2 install"
+    type: "BUILD"
+    working_directory: "/buddy/sport-england---main-website"
+    docker_image_name: "cyberduck/php-fpm-silverstripe"
+    docker_image_tag: "7.4"
+    execute_commands:
+    - "ssh-keyscan bitbucket.org >> /root/.ssh/known_hosts"
+    - "composer install"
+    setup_commands:
+    - "pecl install -f redis"
+    - "docker-php-ext-enable redis"
+    volume_mappings:
+    - "/:/buddy/sport-england---main-website"
+    shell: "BASH"
+  - action: "Upload files to Elastic Beanstalk/app-staging-fos"
+    type: "ELASTIC_BEANSTALK"
+    application_name: "app-staging-fos"
+    environment: "e-et7f9qhag8"
+    environment_name: "fos-web-staging (e-et7f9qhag8)"
+    region: "eu-west-2"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5ee88e69ff1f64778ec86914"
+  - action: "Monitor Elastic Beanstalk/app-staging-fos"
+    type: "MONITOR"
+    application_name: "app-staging-fos"
+    environment: "e-et7f9qhag8"
+    environment_name: "fos-web-staging (e-et7f9qhag8)"
+    region: "eu-west-2"
+    fail_on_yellow: true
+    verbose: true
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    timeout: 600
+    integration_hash: "5ee88e69ff1f64778ec86914"
+  - action: "Purge cache at financial-ombudsman.org.uk"
+    type: "CLOUDFLARE"
+    input_type: "SCM_REPOSITORY"
+    distribution_name: "financial-ombudsman.org.uk"
+    base_url: "https://staging.financial-ombudsman.org.uk/"
+    purge_all: true
+    zone_id: "e0a41c036172fbc1666feea242453b87"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde3442422f5a6e5bb75709"
+  - action: "Check https://www.financial-ombudsman.org.uk status"
+    type: "WEB"
+    disabled: true
+    headers:
+    - name: "Content-Type"
+      value: "application/json"
+    - name: "User-Agent"
+      value: "Buddy"
+    destination: "https://www.financial-ombudsman.org.uk"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+  - action: "Send notification to Cyber-Duck"
+    type: "SENTRY"
+    disabled: true
+    environment: "$BUDDY_PIPELINE_NAME"
+    organization_slug: "cyber-duck"
+    organization_name: "Cyber-Duck"
+    version: "$BUDDY_EXECUTION_REVISION"
+    release_url: "$BUDDY_EXECUTION_URL"
+    deploy_url: "$BUDDY_EXECUTION_URL"
+    projects:
+    - "itiviti"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde343f422f5a6e5bb71c02"
+  - action: "Send notification to fos-dev channel"
+    type: "SLACK"
+    content: "[#$BUDDY_EXECUTION_ID] $BUDDY_PIPELINE_NAME execution by <$BUDDY_INVOKER_URL|$BUDDY_INVOKER_NAME>"
+    channel: "CEBFL2Z0E"
+    channel_name: "fos-dev"
+    attachments:
+    - "{\"fallback\":\"$BUDDY_PIPELINE_NAME execution #$BUDDY_EXECUTION_ID\",\"color\":\"good\",\"fields\":[{\"title\":\"Successful execution\",\"value\":\"<$BUDDY_EXECUTION_URL|Execution #$BUDDY_EXECUTION_ID $BUDDY_EXECUTION_COMMENT>\",\"short\":true},{\"title\":\"Pipeline\",\"value\":\"<$BUDDY_PIPELINE_URL|$BUDDY_PIPELINE_NAME>\",\"short\":true},{\"title\":\"Tag\",\"value\":\"$BUDDY_EXECUTION_TAG\",\"short\":true},{\"title\":\"Project\",\"value\":\"<$BUDDY_PROJECT_URL|$BUDDY_PROJECT_NAME>\",\"short\":true}]}"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde3440422f5a6e5bb735b4"
+- pipeline: "FOS Production"
+  on: "CLICK"
+  refs:
+  - "refs/tags/10.2"
+  priority: "HIGH"
+  target_site_url: "https://www.financial-ombudsman.org.uk/"
+  fail_on_prepare_env_warning: true
+  actions:
+  - action: "Wait for approval"
+    type: "WAIT_FOR_APPLY"
+  - action: "Execute: npm run production"
+    type: "BUILD"
+    disabled: true
+    working_directory: "/buddy/fos"
+    docker_image_name: "library/node"
+    docker_image_tag: "10"
+    execute_commands:
+    - "npm install"
+    - "#npm run production"
+    setup_commands:
+    - "npm install -g gulp grunt-cli"
+    volume_mappings:
+    - "/:/buddy/fos"
+    shell: "BASH"
+  - action: "Execute: npm install + gulp"
+    type: "BUILD"
+    working_directory: "/buddy/fos"
+    docker_image_name: "library/node"
+    docker_image_tag: "10"
+    execute_commands:
+    - "npm install"
+    - "gulp build"
+    setup_commands:
+    - "npm install -g gulp grunt-cli"
+    volume_mappings:
+    - "/:/buddy/fos"
+    shell: "BASH"
+  - action: "Composer 2 install"
+    type: "BUILD"
+    working_directory: "/buddy/fos"
+    docker_image_name: "cyberduck/php-fpm-silverstripe"
+    docker_image_tag: "7.4"
+    execute_commands:
+    - "ssh-keyscan bitbucket.org >> /root/.ssh/known_hosts"
+    - "composer install"
+    setup_commands:
+    - "pecl install -f redis"
+    - "docker-php-ext-enable redis"
+    volume_mappings:
+    - "/:/buddy/fos"
+    shell: "BASH"
+  - action: "Upload files to Elastic Beanstalk/app-production-fos"
+    type: "ELASTIC_BEANSTALK"
+    application_name: "app-production-fos"
+    environment: "e-gysirf6skd"
+    environment_name: "fos-web-production (e-gysirf6skd)"
+    region: "eu-west-2"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5ee88e69ff1f64778ec86914"
+  - action: "Monitor Elastic Beanstalk/app-production-fos"
+    type: "MONITOR"
+    application_name: "app-production-fos"
+    environment: "e-gysirf6skd"
+    environment_name: "fos-web-production (e-gysirf6skd)"
+    region: "eu-west-2"
+    fail_on_yellow: true
+    verbose: true
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    timeout: 1200
+    integration_hash: "5ee88e69ff1f64778ec86914"
+  - action: "Purge cache at financial-ombudsman.org.uk"
+    type: "CLOUDFLARE"
+    input_type: "SCM_REPOSITORY"
+    distribution_name: "financial-ombudsman.org.uk"
+    purge_all: true
+    zone_id: "e0a41c036172fbc1666feea242453b87"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde3442422f5a6e5bb75709"
+  - action: "Check https://www.financial-ombudsman.org.uk status"
+    type: "WEB"
+    disabled: true
+    headers:
+    - name: "Content-Type"
+      value: "application/json"
+    - name: "User-Agent"
+      value: "Buddy"
+    destination: "https://www.financial-ombudsman.org.uk"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+  - action: "Send notification to Cyber-Duck"
+    type: "SENTRY"
+    disabled: true
+    environment: "$BUDDY_PIPELINE_NAME"
+    organization_slug: "cyber-duck"
+    organization_name: "Cyber-Duck"
+    version: "$BUDDY_EXECUTION_REVISION"
+    release_url: "$BUDDY_EXECUTION_URL"
+    deploy_url: "$BUDDY_EXECUTION_URL"
+    projects:
+    - "itiviti"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde343f422f5a6e5bb71c02"
+  - action: "Send notification to fos-dev channel"
+    type: "SLACK"
+    content: "[#$BUDDY_EXECUTION_ID] $BUDDY_PIPELINE_NAME execution by <$BUDDY_INVOKER_URL|$BUDDY_INVOKER_NAME>"
+    channel: "CEBFL2Z0E"
+    channel_name: "fos-dev"
+    attachments:
+    - "{\"fallback\":\"$BUDDY_PIPELINE_NAME execution #$BUDDY_EXECUTION_ID\",\"color\":\"good\",\"fields\":[{\"title\":\"Successful execution\",\"value\":\"<$BUDDY_EXECUTION_URL|Execution #$BUDDY_EXECUTION_ID $BUDDY_EXECUTION_COMMENT>\",\"short\":true},{\"title\":\"Pipeline\",\"value\":\"<$BUDDY_PIPELINE_URL|$BUDDY_PIPELINE_NAME>\",\"short\":true},{\"title\":\"Tag\",\"value\":\"$BUDDY_EXECUTION_TAG\",\"short\":true},{\"title\":\"Project\",\"value\":\"<$BUDDY_PROJECT_URL|$BUDDY_PROJECT_NAME>\",\"short\":true}]}"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde3440422f5a6e5bb735b4"
+- pipeline: "FOS Testing"
+  on: "CLICK"
+  refs:
+  - "refs/heads/feature/29005245/php8.0"
+  priority: "NORMAL"
+  target_site_url: "https://testing.financial-ombudsman.org.uk/"
+  fail_on_prepare_env_warning: true
+  trigger_conditions:
+  - trigger_condition: "ALWAYS"
+  actions:
+  - action: "Execute: npm install + gulp"
+    type: "BUILD"
+    working_directory: "/buddy/itiviti"
+    docker_image_name: "library/node"
+    docker_image_tag: "10"
+    execute_commands:
+    - "npm install"
+    - "gulp build"
+    setup_commands:
+    - "npm install -g gulp grunt-cli"
+    volume_mappings:
+    - "/:/buddy/itiviti"
+    shell: "BASH"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+  - action: "Composer 2 install"
+    type: "BUILD"
+    working_directory: "/buddy/sport-england---main-website"
+    docker_image_name: "cyberduck/php-fpm-laravel"
+    docker_image_tag: "8.0"
+    execute_commands:
+    - "ssh-keyscan bitbucket.org >> /root/.ssh/known_hosts"
+    - "composer install"
+    setup_commands:
+    - "pecl install -f redis"
+    - "docker-php-ext-enable redis"
+    volume_mappings:
+    - "/:/buddy/sport-england---main-website"
+    cache_base_image: true
+    shell: "BASH"
+  - action: "Upload files to Elastic Beanstalk/app-testing-fos"
+    type: "ELASTIC_BEANSTALK"
+    application_name: "app-testing-fos"
+    environment: "e-fzzypytugm"
+    environment_name: "fos-web-testing (e-fzzypytugm)"
+    region: "eu-west-2"
+    integration_hash: "5ee88e69ff1f64778ec86914"
+  - action: "Monitor Elastic Beanstalk/app-testing-fos"
+    type: "MONITOR"
+    application_name: "app-testing-fos"
+    environment: "e-fzzypytugm"
+    environment_name: "fos-web-testing (e-fzzypytugm)"
+    region: "eu-west-2"
+    fail_on_yellow: true
+    verbose: true
+    timeout: 600
+    integration_hash: "5ee88e69ff1f64778ec86914"
+  - action: "Purge cache at financial-ombudsman.org.uk"
+    type: "CLOUDFLARE"
+    input_type: "SCM_REPOSITORY"
+    distribution_name: "financial-ombudsman.org.uk"
+    base_url: "https://staging.financial-ombudsman.org.uk/"
+    purge_all: true
+    zone_id: "e0a41c036172fbc1666feea242453b87"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde3442422f5a6e5bb75709"
+  - action: "Check https://www.financial-ombudsman.org.uk status"
+    type: "WEB"
+    disabled: true
+    headers:
+    - name: "Content-Type"
+      value: "application/json"
+    - name: "User-Agent"
+      value: "Buddy"
+    destination: "https://www.financial-ombudsman.org.uk"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+  - action: "Send notification to Cyber-Duck"
+    type: "SENTRY"
+    disabled: true
+    environment: "$BUDDY_PIPELINE_NAME"
+    organization_slug: "cyber-duck"
+    organization_name: "Cyber-Duck"
+    version: "$BUDDY_EXECUTION_REVISION"
+    release_url: "$BUDDY_EXECUTION_URL"
+    deploy_url: "$BUDDY_EXECUTION_URL"
+    projects:
+    - "itiviti"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde343f422f5a6e5bb71c02"
+  - action: "Send notification to fos-dev channel"
+    type: "SLACK"
+    content: "[#$BUDDY_EXECUTION_ID] $BUDDY_PIPELINE_NAME execution by <$BUDDY_INVOKER_URL|$BUDDY_INVOKER_NAME>"
+    channel: "CEBFL2Z0E"
+    channel_name: "fos-dev"
+    attachments:
+    - "{\"fallback\":\"$BUDDY_PIPELINE_NAME execution #$BUDDY_EXECUTION_ID\",\"color\":\"good\",\"fields\":[{\"title\":\"Successful execution\",\"value\":\"<$BUDDY_EXECUTION_URL|Execution #$BUDDY_EXECUTION_ID $BUDDY_EXECUTION_COMMENT>\",\"short\":true},{\"title\":\"Pipeline\",\"value\":\"<$BUDDY_PIPELINE_URL|$BUDDY_PIPELINE_NAME>\",\"short\":true},{\"title\":\"Tag\",\"value\":\"$BUDDY_EXECUTION_TAG\",\"short\":true},{\"title\":\"Project\",\"value\":\"<$BUDDY_PROJECT_URL|$BUDDY_PROJECT_NAME>\",\"short\":true}]}"
+    trigger_conditions:
+    - trigger_condition: "ALWAYS"
+    integration_hash: "5dde3440422f5a6e5bb735b4"
+- pipeline: "Recurring Composer Security Check"
+  on: "SCHEDULE"
+  refs:
+  - "refs/heads/master"
+  priority: "NORMAL"
+  start_date: "2022-04-04T07:30:00Z"
+  delay: 10080
+  fail_on_prepare_env_warning: true
+  variables:
+  - key: "SECURITY_OUTPUT"
+    value: "[CRITICAL] 4 packages have known vulnerabilities\n\nguzzlehttp/guzzle (6.5.7)\n-------------------------\n\n * CVE-2022-31091: Change in port should be considered a change in origin\n   https://github.com/guzzle/guzzle/security/advisories/GHSA-q559-8m2m-g699\n\n * CVE-2022-31090: CURLOPT_HTTPAUTH option not cleared on change of origin\n   https://github.com/guzzle/guzzle/security/advisories/GHSA-25mq-v84q-4j7r\n\nsilverstripe/assets (1.10.0)\n----------------------------\n\n * CVE-2022-29858: CVE-2022-29858: Unpublished, protected files can be published via shortcode\n   https://www.silverstripe.org/download/security-releases/cve-2022-29858\n\nsilverstripe/framework (4.10.2)\n-------------------------------\n\n * CVE-2022-28803: CVE-2022-28803: Stored XSS in link tags added via XHR\n   https://www.silverstripe.org/download/security-releases/cve-2022-28803\n\n * CVE-2022-25238: CVE-2022-25238: Stored XSS via HTML fields\n   https://www.silverstripe.org/download/security-releases/cve-2022-25238\n\n * CVE-2021-41559: CVE-2021-41559: Quadratic blowup in Convert::xml2array()\n   https://www.silverstripe.org/download/security-releases/cve-2021-41559\n\nsilverstripe/hybridsessions (2.4.0)\n-----------------------------------\n\n * CVE-2022-24444: CVE-2022-24444: Hybridsessions does not expire session id on logout\n   https://www.silverstripe.org/download/security-releases/cve-2022-24444"
+    type: "VAR"
+    settable: true
+    description: "Variable used for Slack upgrades"
+  actions:
+  - action: "Execute: security-checker security:check composer.lock"
+    type: "BUILD"
+    working_directory: "/buddy/tfl-property-search-1"
+    docker_image_name: "cyberduck/php-fpm-laravel"
+    docker_image_tag: "latest"
+    execute_commands:
+    - "SECURITY_OUTPUT=''"
+    - "composer global require enlightn/security-checker"
+    - "PATH=$(composer global config bin-dir --absolute --quiet):$PATH"
+    - "SECURITY_OUTPUT=$(security-checker security:check composer.lock) || true"
+    volume_mappings:
+    - "/:/buddy/tfl-property-search-1"
+    cache_base_image: true
+    shell: "BASH"
+  - action: "Report Security Vulnerabilities"
+    type: "SLACK"
+    content: ":warning: <$BUDDY_PROJECT_URL|$BUDDY_PROJECT_NAME> | <$BUDDY_EXECUTION_URL|Recurring Security Checker Execution ($BUDDY_EXECUTION_BRANCH)>"
+    blocks: "[{\"type\":\"context\",\"elements\":[{\"type\":\"mrkdwn\",\"text\":\"$SECURITY_OUTPUT\"}]},{\"type\":\"divider\"}]"
+    channel: "C0204LALS9M"
+    channel_name: "cd-laravel-security"
+    trigger_conditions:
+    - trigger_condition: "VAR_NOT_CONTAINS"
+      trigger_variable_value: "[OK]"
+      trigger_variable_key: "SECURITY_OUTPUT"
+    integration_hash: "5dde343f422f5a6e5bb70d83"
+  - action: "Report execution success"
+    type: "SLACK"
+    content: ":white_check_mark:  <$BUDDY_PROJECT_URL|$BUDDY_PROJECT_NAME> | <$BUDDY_EXECUTION_URL|Recurring Security Checker Execution ($BUDDY_EXECUTION_BRANCH)>"
+    blocks: "[{\"type\":\"context\",\"elements\":[{\"type\":\"mrkdwn\",\"text\":\"$SECURITY_OUTPUT\"}]},{\"type\":\"divider\"}]"
+    channel: "C0204LALS9M"
+    channel_name: "cd-laravel-security"
+    trigger_conditions:
+    - trigger_condition: "VAR_CONTAINS"
+      trigger_variable_value: "[OK]"
+      trigger_variable_key: "SECURITY_OUTPUT"
+    integration_hash: "5dde343f422f5a6e5bb70d83"
